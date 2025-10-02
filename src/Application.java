@@ -72,34 +72,34 @@ public class Application {
 
 
     private Application() {
-        // create SQLite database connection here!
         try {
-            Class.forName("org.sqlite.JDBC");
+            // Load MySQL Driver
+            Class.forName("com.mysql.cj.jdbc.Driver");
 
-            String url = "jdbc:sqlite:store.db";
-
-            connection = DriverManager.getConnection(url);
-            dataAdapter = new DataAdapter(connection);
-
+            // Connect to MySQL
+            connection = DriverManager.getConnection(
+                "jdbc:mysql://localhost:3306/storeapp", // Your DB name
+                "root",                                // Username
+                "1234"                                 // Password
+            );
+            System.out.println("MySQL connection established successfully!");
         }
         catch (ClassNotFoundException ex) {
-            System.out.println("SQLite is not installed. System exits with error!");
+            System.out.println("MySQL JDBC Driver is not installed. System exits with error!");
             ex.printStackTrace();
             System.exit(1);
         }
-
         catch (SQLException ex) {
-            System.out.println("SQLite database is not ready. System exits with error!" + ex.getMessage());
-
+            System.out.println("MySQL database is not ready. System exits with error! " + ex.getMessage());
+            ex.printStackTrace();
             System.exit(2);
         }
 
         productController = new ProductController(productView);
-
         orderController = new OrderController(orderView);
-
         loginController = new LoginController(loginScreen);
     }
+
 
 
     public static void main(String[] args) {
