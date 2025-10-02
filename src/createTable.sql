@@ -1,7 +1,11 @@
-DROP TABLE IF EXISTS users;
-DROP TABLE IF EXISTS products;
-DROP TABLE IF EXISTS orders;
+SET FOREIGN_KEY_CHECKS = 0;
+
 DROP TABLE IF EXISTS orderLine;
+DROP TABLE IF EXISTS orders;
+DROP TABLE IF EXISTS products;
+DROP TABLE IF EXISTS users;
+
+SET FOREIGN_KEY_CHECKS = 1;
 
 CREATE TABLE users (
     userID INT PRIMARY KEY AUTO_INCREMENT,
@@ -38,3 +42,6 @@ CREATE TABLE orderLine (
     FOREIGN KEY (orderID) REFERENCES orders(orderID),
     FOREIGN KEY (productID) REFERENCES products(productID)
 );
+
+-- Insert a default manager user
+INSERT INTO users (username, userPassword, fullName, isManager) VALUES ('manager', 'manager', 'global manager', TRUE);

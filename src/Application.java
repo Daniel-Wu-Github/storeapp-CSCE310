@@ -1,3 +1,6 @@
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.sql.*;
 
 public class Application {
@@ -78,11 +81,12 @@ public class Application {
 
             // Connect to MySQL
             connection = DriverManager.getConnection(
-                "jdbc:mysql://localhost:3306/storeapp", // Your DB name
-                "root",                                // Username
-                "1234"                                 // Password
+                "jdbc:mysql://localhost:3306/storeapp", 
+                "root",                               
+                "1234"                                 
             );
             System.out.println("MySQL connection established successfully!");
+            dataAdapter = new DataAdapter(connection);
         }
         catch (ClassNotFoundException ex) {
             System.out.println("MySQL JDBC Driver is not installed. System exits with error!");
@@ -100,9 +104,65 @@ public class Application {
         loginController = new LoginController(loginScreen);
     }
 
+    public void runSqlScript(String scriptPath) {
+        try {
+            String sql = new String(Files.readAllBytes(Paths.get(scriptPath)));
+
+            // Strip block comments and line comments
+            sql = sql.replaceAll("(?s)/\\*.*?\\*/", "");
+            sql = sql.replaceAll("(?m)^\\s*--.*$", "");
+
+            String[] statements = sql.split("(?m);\\s*(?=\\r?\\n|$)");
+            try (Statement stmt = connection.createStatement()) {
+                for (String s : statements) {
+                    String trimmed = s.trim();
+                    if (trimmed.isEmpty()) continue;
+                    stmt.execute(trimmed);
+                }
+            }
+            System.out.println("SQL script executed: " + scriptPath);
+        } catch (IOException | SQLException ex) {
+            throw new RuntimeException("Failed to run SQL script: " + scriptPath, ex);
+        }
+    }
+
 
 
     public static void main(String[] args) {
-        Application.getInstance().getLoginScreen().setVisible(true);
+        Application app = Application.getInstance();
+        app.runSqlScript("src/createTable.sql");
+        String sqlitePath = detectSQLitePath(args);
+        if (sqlitePath != null) {
+            try {
+                System.out.println("Running SQLite -> MySQL migration from: " + sqlitePath);
+                SQLiteToMySQLMigrator.migrate(sqlitePath, app.getDBConnection());
+            } catch (Exception ex) {
+                System.out.println("Migration failed: " + ex.getMessage());
+                ex.printStackTrace();
+            }
+        } else {
+            System.out.println("No SQLite database found to migrate. You can pass a path as the first argument.");
+        }
+        app.getLoginScreen().setVisible(true);
+    }
+    //helper method to detect sqlite path
+    private static String detectSQLitePath(String[] args) {
+        if (args != null && args.length > 0 && args[0] != null && !args[0].trim().isEmpty()) {
+            return args[0];
+        }
+        String[] candidates = new String[] {
+                "store.db",
+                "../store.db",
+                "../../store.db",
+                "./store.db"
+        };
+        for (String c : candidates) {
+            try {
+                if (java.nio.file.Files.exists(java.nio.file.Paths.get(c))) {
+                    return java.nio.file.Paths.get(c).toAbsolutePath().toString();
+                }
+            } catch (Exception ignore) {}
+        }
+        return null;
     }
 }

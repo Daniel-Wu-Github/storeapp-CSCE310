@@ -1,100 +1,101 @@
 import java.sql.*;
 
 public class DataAdapter {
-    private Connection connection;
+    private final Connection connection;
 
     public DataAdapter(Connection connection) {
         this.connection = connection;
     }
 
     public Product loadProduct(int id) {
-        try {
-            String query = "SELECT * FROM Products WHERE ProductID = " + id;
-
-            Statement statement = connection.createStatement();
-            ResultSet resultSet = statement.executeQuery(query);
-            if (resultSet.next()) {
+        String sql = "SELECT productID, productName, price, quantity, sellerID FROM products WHERE productID = ?";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setInt(1, id);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) return null;
                 Product product = new Product();
-                product.setProductID(resultSet.getInt(1));
-                product.setName(resultSet.getString(2));
-                product.setPrice(resultSet.getDouble(3));
-                product.setQuantity(resultSet.getDouble(4));
-                resultSet.close();
-                statement.close();
-
+                product.setProductID(rs.getInt("productID"));
+                product.setName(rs.getString("productName"));
+                product.setPrice(rs.getDouble("price"));
+                product.setQuantity(rs.getDouble("quantity"));
+                try { product.setSellerID(rs.getInt("sellerID")); } catch (Exception ignore) {}
                 return product;
             }
-
         } catch (SQLException e) {
             System.out.println("Database access error!");
             e.printStackTrace();
+            return null;
         }
-        return null;
     }
 
     public boolean saveProduct(Product product) {
-        try {
-            PreparedStatement statement = connection.prepareStatement("SELECT * FROM Products WHERE ProductID = ?");
-            statement.setInt(1, product.getProductID());
-
-            ResultSet resultSet = statement.executeQuery();
-
-            if (resultSet.next()) { // this product exists, update its fields
-                statement = connection.prepareStatement("UPDATE Products SET Name = ?, Price = ?, Quantity = ? WHERE ProductID = ?");
-                statement.setString(1, product.getName());
-                statement.setDouble(2, product.getPrice());
-                statement.setDouble(3, product.getQuantity());
-                statement.setInt(4, product.getProductID());
+        String existsSql = "SELECT 1 FROM products WHERE productID = ?";
+        try (PreparedStatement check = connection.prepareStatement(existsSql)) {
+            check.setInt(1, product.getProductID());
+            boolean exists;
+            try (ResultSet rs = check.executeQuery()) {
+                exists = rs.next();
             }
-            else { // this product does not exist, use insert into
-                statement = connection.prepareStatement("INSERT INTO Products VALUES (?, ?, ?, ?)");
-                statement.setString(2, product.getName());
-                statement.setDouble(3, product.getPrice());
-                statement.setDouble(4, product.getQuantity());
-                statement.setInt(1, product.getProductID());
-            }
-            statement.execute();
-            resultSet.close();
-            statement.close();
-            return true;        // save successfully
 
+            if (exists) {
+                String updateSql = "UPDATE products SET productName = ?, price = ?, quantity = ?, sellerID = ? WHERE productID = ?";
+                try (PreparedStatement ps = connection.prepareStatement(updateSql)) {
+                    ps.setString(1, product.getName());
+                    ps.setDouble(2, product.getPrice());
+                    ps.setDouble(3, product.getQuantity());
+                    ps.setInt(4, product.getSellerID());
+                    ps.setInt(5, product.getProductID());
+                    return ps.executeUpdate() == 1;
+                }
+            } else {
+                String insertSql = "INSERT INTO products (productID, productName, price, quantity, sellerID) VALUES (?, ?, ?, ?, ?)";
+                try (PreparedStatement ps = connection.prepareStatement(insertSql)) {
+                    ps.setInt(1, product.getProductID());
+                    ps.setString(2, product.getName());
+                    ps.setDouble(3, product.getPrice());
+                    ps.setDouble(4, product.getQuantity());
+                    ps.setInt(5, product.getSellerID());
+                    return ps.executeUpdate() == 1;
+                }
+            }
         } catch (SQLException e) {
             System.out.println("Database access error!");
             e.printStackTrace();
-            return false; // cannot save!
+            return false;
         }
     }
 
     public Order loadOrder(int id) {
-        try {
-            Order order = null;
-            Statement statement = connection.createStatement();
-            ResultSet resultSet = statement.executeQuery("SELECT * FROM Orders WHERE OrderID = " + id);
+        String orderSql = "SELECT orderID, buyerID, totalCost, totalTax, date FROM orders WHERE orderID = ?";
+        try (PreparedStatement ps = connection.prepareStatement(orderSql)) {
+            ps.setInt(1, id);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) return null;
+                Order order = new Order();
+                order.setOrderID(rs.getInt("orderID"));
+                order.setBuyerID(rs.getInt("buyerID"));
+                order.setTotalCost(rs.getDouble("totalCost"));
+                order.setTotalTax(rs.getDouble("totalTax"));
+                order.setDate(rs.getString("date"));
 
-            if (resultSet.next()) {
-                order = new Order();
-                order.setOrderID(resultSet.getInt("OrderID"));
-                order.setBuyerID(resultSet.getInt("CustomerID"));
-                order.setTotalCost(resultSet.getDouble("TotalCost"));
-                order.setDate(resultSet.getString("OrderDate"));
-                resultSet.close();
-                statement.close();
+                // load order lines
+                String linesSql = "SELECT orderID, productID, quantity, cost FROM orderLine WHERE orderID = ?";
+                try (PreparedStatement lps = connection.prepareStatement(linesSql)) {
+                    lps.setInt(1, id);
+                    try (ResultSet lrs = lps.executeQuery()) {
+                        while (lrs.next()) {
+                            OrderLine line = new OrderLine();
+                            line.setOrderID(lrs.getInt("orderID"));
+                            line.setProductID(lrs.getInt("productID"));
+                            line.setQuantity(lrs.getDouble("quantity"));
+                            line.setCost(lrs.getDouble("cost"));
+                            order.addLine(line);
+                        }
+                    }
+                }
+
+                return order;
             }
-
-            // loading the order lines for this order
-            resultSet = statement.executeQuery("SELECT * FROM OrderLine WHERE OrderID = " + id);
-
-            while (resultSet.next()) {
-                OrderLine line = new OrderLine();
-                line.setOrderID(resultSet.getInt(1));
-                line.setProductID(resultSet.getInt(2));
-                line.setQuantity(resultSet.getDouble(3));
-                line.setCost(resultSet.getDouble(4));
-                order.addLine(line);
-            }
-
-            return order;
-
         } catch (SQLException e) {
             System.out.println("Database access error!");
             e.printStackTrace();
@@ -103,60 +104,92 @@ public class DataAdapter {
     }
 
     public boolean saveOrder(Order order) {
+        // We'll insert the order first, then the lines, and update product quantities in a single transaction
+        boolean originalAutoCommit;
         try {
-            PreparedStatement statement = connection.prepareStatement("INSERT INTO Orders VALUES (?, ?, ?, ?, ?)");
-            statement.setInt(1, order.getOrderID());
-            statement.setInt(3, order.getBuyerID());
-            statement.setString(2, order.getDate());
-            statement.setDouble(4, order.getTotalCost());
-            statement.setDouble(5, order.getTotalTax());
+            originalAutoCommit = connection.getAutoCommit();
+            connection.setAutoCommit(false);
 
-            statement.execute();    // commit to the database;
-            statement.close();
-
-            statement = connection.prepareStatement("INSERT INTO OrderLine VALUES (?, ?, ?, ?)");
-
-            for (OrderLine line: order.getLines()) { // store for each order line!
-                statement.setInt(1, line.getOrderID());
-                statement.setInt(2, line.getProductID());
-                statement.setDouble(3, line.getQuantity());
-                statement.setDouble(4, line.getCost());
-
-                statement.execute();    // commit to the database;
+            Integer orderIdToUse = order.getOrderID();
+            // If orderID is 0, let DB assign one (AUTO_INCREMENT)
+            if (orderIdToUse == 0) {
+                String insertOrderSql = "INSERT INTO orders (buyerID, totalCost, totalTax, date) VALUES (?, ?, ?, ?)";
+                try (PreparedStatement ps = connection.prepareStatement(insertOrderSql, Statement.RETURN_GENERATED_KEYS)) {
+                    ps.setInt(1, order.getBuyerID());
+                    ps.setDouble(2, order.getTotalCost());
+                    ps.setDouble(3, order.getTotalTax());
+                    ps.setString(4, order.getDate());
+                    ps.executeUpdate();
+                    try (ResultSet keys = ps.getGeneratedKeys()) {
+                        if (keys.next()) {
+                            orderIdToUse = keys.getInt(1);
+                            order.setOrderID(orderIdToUse);
+                        }
+                    }
+                }
+            } else {
+                String insertOrderSql = "INSERT INTO orders (orderID, buyerID, totalCost, totalTax, date) VALUES (?, ?, ?, ?, ?)";
+                try (PreparedStatement ps = connection.prepareStatement(insertOrderSql)) {
+                    ps.setInt(1, orderIdToUse);
+                    ps.setInt(2, order.getBuyerID());
+                    ps.setDouble(3, order.getTotalCost());
+                    ps.setDouble(4, order.getTotalTax());
+                    ps.setString(5, order.getDate());
+                    ps.executeUpdate();
+                }
             }
-            statement.close();
-            return true; // save successfully!
-        }
-        catch (SQLException e) {
+
+            // Insert lines
+            String insertLineSql = "INSERT INTO orderLine (orderID, productID, quantity, cost) VALUES (?, ?, ?, ?)";
+            try (PreparedStatement lps = connection.prepareStatement(insertLineSql)) {
+                for (OrderLine line : order.getLines()) {
+                    lps.setInt(1, orderIdToUse);
+                    lps.setInt(2, line.getProductID());
+                    lps.setDouble(3, line.getQuantity());
+                    lps.setDouble(4, line.getCost());
+                    lps.executeUpdate();
+
+                    // Decrease product quantity
+                    String updateQtySql = "UPDATE products SET quantity = quantity - ? WHERE productID = ?";
+                    try (PreparedStatement ups = connection.prepareStatement(updateQtySql)) {
+                        ups.setDouble(1, line.getQuantity());
+                        ups.setInt(2, line.getProductID());
+                        ups.executeUpdate();
+                    }
+                }
+            }
+
+            connection.commit();
+            connection.setAutoCommit(originalAutoCommit);
+            return true;
+        } catch (SQLException e) {
             System.out.println("Database access error!");
             e.printStackTrace();
+            try { connection.rollback(); } catch (SQLException ignore) {}
+            try { connection.setAutoCommit(true); } catch (SQLException ignore) {}
             return false;
         }
     }
 
     public User loadUser(String username, String password) {
-        try {
-
-            PreparedStatement statement = connection.prepareStatement("SELECT * FROM Users WHERE UserName = ? AND Password = ?");
-            statement.setString(1, username);
-            statement.setString(2, password);
-            ResultSet resultSet = statement.executeQuery();
-            if (resultSet.next()) {
+        String sql = "SELECT userID, username, userPassword, fullName, isManager FROM users WHERE username = ? AND userPassword = ?";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, username);
+            ps.setString(2, password);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) return null;
                 User user = new User();
-                user.setUserID(resultSet.getInt("UserID"));
-                user.setUsername(resultSet.getString("UserName"));
-                user.setPassword(resultSet.getString("Password"));
-                user.setFullName(resultSet.getString("DisplayName"));
-                resultSet.close();
-                statement.close();
-
+                user.setUserID(rs.getInt("userID"));
+                user.setUsername(rs.getString("username"));
+                user.setPassword(rs.getString("userPassword"));
+                user.setFullName(rs.getString("fullName"));
+                // Note: User class currently has no setter for isManager
                 return user;
             }
-
         } catch (SQLException e) {
             System.out.println("Database access error!");
             e.printStackTrace();
+            return null;
         }
-        return null;
     }
 }

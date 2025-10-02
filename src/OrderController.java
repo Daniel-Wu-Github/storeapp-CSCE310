@@ -1,6 +1,8 @@
-import javax.swing.*;
 import java.awt.event.ActionEvent;
+import java.time.LocalDateTime;
 import java.awt.event.ActionListener;
+import javax.swing.*;
+//import joptionPane;
 
 public class OrderController implements ActionListener {
     private OrderView view;
@@ -26,12 +28,32 @@ public class OrderController implements ActionListener {
     }
 
     private void makeOrder() {
-        JOptionPane.showMessageDialog(null, "This function is being implemented!");
+        if (order.getLines().isEmpty()) {
+            JOptionPane.showMessageDialog(null, "No items in the order.");
+            return;
+        }
 
-        /* Remember to update new quantity of products!
-        product.setQuantity(product.getQuantity() - quantity); // update new quantity!!
-        dataAdapter.saveProduct(product); // and save this product back 
-        */
+        // Set buyer if logged in
+        User current = Application.getInstance().getCurrentUser();
+        if (current != null) {
+            order.setBuyerID(current.getUserID());
+        }
+
+        // Set date/time and simple tax (adjust rate if needed)
+        order.setDate(LocalDateTime.now().toString());
+        double taxRate = 0.0; // set to e.g., 0.09 for 9% if you need tax
+        order.setTotalTax(order.getTotalCost() * taxRate);
+
+        boolean ok = Application.getInstance().getDataAdapter().saveOrder(order);
+        if (ok) {
+            JOptionPane.showMessageDialog(null, "Order saved successfully. OrderID: " + order.getOrderID());
+            // reset UI for a new order
+            this.view.getLabTotal().setText("Total: $");
+            // Create a fresh order for next transaction
+            this.order = new Order();
+        } else {
+            JOptionPane.showMessageDialog(null, "Failed to save order. See logs for details.");
+        }
 
     }
 
